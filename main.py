@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import requests
@@ -9,12 +9,14 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
-    allow_methods=["POST"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/procesar-factura/")
-async def procesar_factura(file: UploadFile = File(...)):
+async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Form("Nueva Cotización")):
     try:
         # 1. Extraer texto completo del PDF
         texto_completo = ""
@@ -117,7 +119,7 @@ async def procesar_factura(file: UploadFile = File(...)):
         datos = {
             "archivo_nombre": file.filename,
             "cotizacion_id": v_num_cotizacion,
-            "tipo_registro": "Nueva Cotización",
+            "tipo_registro": tipo_registro,
             "fecha": v_fecha,
             "cliente": v_cliente,
             "filas_tabla": filas_html,
