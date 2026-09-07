@@ -1,8 +1,7 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
-import smtplib
-from email.mime.text import MIMEText
+import requests
 
 app = FastAPI()
 
@@ -20,14 +19,12 @@ async def procesar_factura(file: UploadFile = File(...)):
             tablas = page.extract_tables()
             texto += f"Tablas encontradas: {tablas}\n"
             
-    mensaje = MIMEText(f"Datos extraídos de la factura:\n\n{texto}")
-    mensaje['Subject'] = f"Desglose automatizado: {file.filename}"
-    mensaje['From'] = "redesolatur@gmail.com"
-    mensaje['To'] = "redesolatur@gmail.com"
+    # Envío de datos al puente de Google
+    url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
+    datos = {
+        "asunto": f"Desglose automatizado: {file.filename}",
+        "mensaje": f"Datos extraídos de la factura:\n\n{texto}"
+    }
+    requests.post(url_google, json=datos)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        # Aquí ya está tu contraseña sin espacios
-        server.login("redesolatur@gmail.com", "eshjjlzofibibewv")
-        server.send_message(mensaje)
-
-    return {"estado": "Completado", "mensaje": "Datos enviados al correo"}
+    return {"estado": "Completado", "mensaje": "Datos enviados por Google"}
