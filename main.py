@@ -24,7 +24,7 @@ async def procesar_factura(file: UploadFile = File(...)):
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
-        # 2. Extracción de datos generales
+        # 2. Extracción de datos generales y número de cotización (Ej: Q31, Q35)
         def extraer_valor(patrones, texto, por_defecto="No detectado"):
             for patron in patrones:
                 resultado = re.search(patron, texto, re.IGNORECASE)
@@ -34,6 +34,13 @@ async def procesar_factura(file: UploadFile = File(...)):
 
         v_fecha = extraer_valor([r'Fecha de Generación\s*([0-9/\s:]+)'], texto_completo)
         
+        # Extraer número de cotización (ej. Q31, Q35) de la parte superior del PDF
+        v_num_cotizacion = extraer_valor([r'\n(Q\d+)\s*\n', r'Cotización.*?(Q\d+)'], texto_completo, "Cotización")
+        if not v_num_cotizacion.startswith("Q"):
+            # Búsqueda de respaldo en el nombre del archivo si no está en el texto plano
+            match_nombre = re.search(r'(Q\d+)', file.filename, re.IGNORECASE)
+            v_num_cotizacion = match_nombre.group(1).upper() if match_nombre else "Cotización"
+
         v_cliente = extraer_valor([
             r'DATOS DEL CLIENTE.*?Razón Social\s+(.+?)(?=\s+NIT)',
             r'Razón Social\s+(CONSTRUCTORA[^\n]+)'
@@ -52,7 +59,6 @@ async def procesar_factura(file: UploadFile = File(...)):
         filas_html = ""
         if tabla_match:
             bloque_tabla = tabla_match.group(1).strip()
-            # Separar cada ítem que comience con número de ítem y referencia (ej: 1 004, 2 003)
             items_crudos = re.split(r'\n(?=\d+\s+\d{3})', bloque_tabla)
             
             for item in items_crudos:
@@ -61,26 +67,19 @@ async def procesar_factura(file: UploadFile = File(...)):
                     continue
                 
                 texto_item_unido = " ".join(lineas)
-                
-                # Extraer componentes mediante expresiones regulares exactas
                 match_cabeza = re.match(r'^(\d+)\s+(\d{3})\s+(.*)', texto_item_unido)
                 if match_cabeza:
                     num = match_cabeza.group(1)
                     ref = match_cabeza.group(2)
                     resto = match_cabeza.group(3)
                     
-                    # Extraer todos los valores monetarios que aparecen en el ítem
                     precios = re.findall(r'\$[\d\,\.]+', resto)
-                    
-                    # Extraer Cantidad y Unidad (ej: "1 EA", "2 94")
                     cant_um_match = re.search(r'\b(\d+)\s+(EA|94|UND)\b', resto, re.IGNORECASE)
                     cant = cant_um_match.group(1) if cant_um_match else "1"
                     um = cant_um_match.group(2) if cant_um_match else "EA"
                     
-                    # Detectar si tiene IVA / IMP
                     imp = "IVA 19%" if "IVA 19%" in resto.upper() else ""
                     
-                    # Aislar la descripción pura (removiendo cantidades, unidades, impuestos y precios del texto)
                     descripcion = resto
                     if cant_um_match:
                         descripcion = descripcion.replace(cant_um_match.group(0), "")
@@ -89,7 +88,6 @@ async def procesar_factura(file: UploadFile = File(...)):
                         descripcion = descripcion.replace(p, "")
                     descripcion = re.sub(r'\s+', ' ', descripcion).strip()
                     
-                    # Asignar precios a columnas correspondientes
                     precio_unit = precios[0] if len(precios) > 0 else ""
                     subtotal_val = precios[1] if len(precios) > 1 else precio_unit
                     total_val = precios[2] if len(precios) > 2 else subtotal_val
@@ -115,11 +113,13 @@ async def procesar_factura(file: UploadFile = File(...)):
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script
+        # 5. Enviar a Google Apps Script (incluyendo tipo de documento y etiqueta limpia)
         url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
         
         datos = {
             "archivo_nombre": file.filename,
+            "cotizacion_id": v_num_cotizacion,
+            "tipo_registro": "Nueva Cotización",  # Cambiar a "Corrección de Cotización" si lo requieres manualmente en el futuro
             "fecha": v_fecha,
             "cliente": v_cliente,
             "filas_tabla": filas_html,
@@ -131,7 +131,7 @@ async def procesar_factura(file: UploadFile = File(...)):
         
         requests.post(url_google, json=datos)
         
-        return {"estado": "Completado", "mensaje": "Tabla tabulada correctamente"}
+        return {"estado": "Completado", "mensaje": "Procesado correctamente"}
         
     except Exception as e:
         return {"estado": "Error", "mensaje": str(e)}
