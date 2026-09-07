@@ -115,7 +115,7 @@ async def procesar_factura(file: UploadFile = File(...)):
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script con la nueva estructura de columnas
+        # 5. Enviar a Google Apps Script
         url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
         
         datos = {
