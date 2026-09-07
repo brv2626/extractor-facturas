@@ -46,13 +46,13 @@ async def procesar_factura(file: UploadFile = File(...)):
         todos_totales = re.findall(r'\nTOTAL\s+(\$[\d\,\.]+)', texto_completo, re.IGNORECASE)
         v_total = todos_totales[-1] if todos_totales else "No detectado"
 
-        # 3. Agrupación limpia y fluida de los ítems de la tabla
+        # 3. Extracción estructurada y limpia de la tabla por columnas reales
         tabla_match = re.search(r'REF\s+DESCRIPCIÓN.*?TOTAL ITEM\s*\n(.*?)(?=\nSubtotal)', texto_completo, re.DOTALL | re.IGNORECASE)
         
         filas_html = ""
         if tabla_match:
             bloque_tabla = tabla_match.group(1).strip()
-            # Dividir los ítems basándonos en el número de inicio (ej. "1 004", "2 002", "3 003")
+            # Separar cada ítem que comience con número de ítem y referencia (ej: 1 004, 2 003)
             items_crudos = re.split(r'\n(?=\d+\s+\d{3})', bloque_tabla)
             
             for item in items_crudos:
@@ -60,36 +60,62 @@ async def procesar_factura(file: UploadFile = File(...)):
                 if not lineas:
                     continue
                 
-                primera_linea = lineas[0]
-                partes = primera_linea.split()
+                texto_item_unido = " ".join(lineas)
                 
-                if len(partes) >= 2:
-                    num = partes[0]
-                    ref = partes[1]
-                    # Unimos todo el texto restante del ítem en una sola línea fluida
-                    resto_texto = " ".join(partes[2:])
-                    if len(lineas) > 1:
-                        resto_texto += " " + " ".join(lineas[1:])
+                # Extraer componentes mediante expresiones regulares exactas
+                match_cabeza = re.match(r'^(\d+)\s+(\d{3})\s+(.*)', texto_item_unido)
+                if match_cabeza:
+                    num = match_cabeza.group(1)
+                    ref = match_cabeza.group(2)
+                    resto = match_cabeza.group(3)
                     
-                    # Limpiamos saltos extra o números sueltos al final de la línea
-                    resto_texto = re.sub(r'\s+', ' ', resto_texto).strip()
+                    # Extraer todos los valores monetarios que aparecen en el ítem
+                    precios = re.findall(r'\$[\d\,\.]+', resto)
+                    
+                    # Extraer Cantidad y Unidad (ej: "1 EA", "2 94")
+                    cant_um_match = re.search(r'\b(\d+)\s+(EA|94|UND)\b', resto, re.IGNORECASE)
+                    cant = cant_um_match.group(1) if cant_um_match else "1"
+                    um = cant_um_match.group(2) if cant_um_match else "EA"
+                    
+                    # Detectar si tiene IVA / IMP
+                    imp = "IVA 19%" if "IVA 19%" in resto.upper() else ""
+                    
+                    # Aislar la descripción pura (removiendo cantidades, unidades, impuestos y precios del texto)
+                    descripcion = resto
+                    if cant_um_match:
+                        descripcion = descripcion.replace(cant_um_match.group(0), "")
+                    descripcion = re.sub(r'IVA\s*19%', '', descripcion, flags=re.IGNORECASE)
+                    for p in precios:
+                        descripcion = descripcion.replace(p, "")
+                    descripcion = re.sub(r'\s+', ' ', descripcion).strip()
+                    
+                    # Asignar precios a columnas correspondientes
+                    precio_unit = precios[0] if len(precios) > 0 else ""
+                    subtotal_val = precios[1] if len(precios) > 1 else precio_unit
+                    total_val = precios[2] if len(precios) > 2 else subtotal_val
                     
                     filas_html += f"""
                     <tr style="border-bottom: 1px solid #e0e0e0;">
-                      <td style="padding: 10px; text-align: center; vertical-align: top; color: #555; font-weight: bold;">{num}</td>
-                      <td style="padding: 10px; text-align: center; vertical-align: top; font-weight: bold; color: #333;">{ref}</td>
-                      <td style="padding: 10px; vertical-align: top; color: #222; line-height: 1.4;" colspan="7">{resto_texto}</td>
+                      <td style="padding: 8px; text-align: center; vertical-align: top; color: #555;">{num}</td>
+                      <td style="padding: 8px; text-align: center; vertical-align: top; font-weight: bold; color: #333;">{ref}</td>
+                      <td style="padding: 8px; vertical-align: top; color: #222; font-size: 11px; line-height: 1.4;">{descripcion}</td>
+                      <td style="padding: 8px; text-align: center; vertical-align: top;">{cant}</td>
+                      <td style="padding: 8px; text-align: center; vertical-align: top;">{um}</td>
+                      <td style="padding: 8px; text-align: right; vertical-align: top; white-space: nowrap;">{precio_unit}</td>
+                      <td style="padding: 8px; text-align: center; vertical-align: top; color: #c62828; font-size: 10px;">{imp}</td>
+                      <td style="padding: 8px; text-align: right; vertical-align: top; white-space: nowrap;">{subtotal_val}</td>
+                      <td style="padding: 8px; text-align: right; vertical-align: top; font-weight: bold; white-space: nowrap; color: #111;">{total_val}</td>
                     </tr>
                     """
         else:
-            filas_html = "<tr><td colspan='9' style='padding: 10px; text-align: center;'>Detalle general de servicios.</td></tr>"
+            filas_html = "<tr><td colspan='9' style='padding: 10px; text-align: center;'>No se pudieron procesar los ítems.</td></tr>"
 
-        # 4. Convertir PDF a Base64 para adjunto
+        # 4. Convertir PDF a Base64 para el adjunto
         file.file.seek(0)
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script
+        # 5. Enviar a Google Apps Script con la nueva estructura de columnas
         url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
         
         datos = {
@@ -105,7 +131,7 @@ async def procesar_factura(file: UploadFile = File(...)):
         
         requests.post(url_google, json=datos)
         
-        return {"estado": "Completado", "mensaje": "Procesado correctamente"}
+        return {"estado": "Completado", "mensaje": "Tabla tabulada correctamente"}
         
     except Exception as e:
         return {"estado": "Error", "mensaje": str(e)}
