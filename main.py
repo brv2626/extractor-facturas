@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import requests
@@ -14,7 +14,7 @@ app.add_middleware(
 )
 
 @app.post("/procesar-factura/")
-async def procesar_factura(file: UploadFile = File(...)):
+async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Form("Nueva Cotización")):
     try:
         # 1. Extraer texto completo del PDF
         texto_completo = ""
@@ -24,7 +24,7 @@ async def procesar_factura(file: UploadFile = File(...)):
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
-        # 2. Extracción de datos generales y número de cotización (Ej: Q31, Q35)
+        # 2. Extracción de datos generales y número de cotización
         def extraer_valor(patrones, texto, por_defecto="No detectado"):
             for patron in patrones:
                 resultado = re.search(patron, texto, re.IGNORECASE)
@@ -34,10 +34,8 @@ async def procesar_factura(file: UploadFile = File(...)):
 
         v_fecha = extraer_valor([r'Fecha de Generación\s*([0-9/\s:]+)'], texto_completo)
         
-        # Extraer número de cotización (ej. Q31, Q35) de la parte superior del PDF
         v_num_cotizacion = extraer_valor([r'\n(Q\d+)\s*\n', r'Cotización.*?(Q\d+)'], texto_completo, "Cotización")
         if not v_num_cotizacion.startswith("Q"):
-            # Búsqueda de respaldo en el nombre del archivo si no está en el texto plano
             match_nombre = re.search(r'(Q\d+)', file.filename, re.IGNORECASE)
             v_num_cotizacion = match_nombre.group(1).upper() if match_nombre else "Cotización"
 
@@ -53,7 +51,7 @@ async def procesar_factura(file: UploadFile = File(...)):
         todos_totales = re.findall(r'\nTOTAL\s+(\$[\d\,\.]+)', texto_completo, re.IGNORECASE)
         v_total = todos_totales[-1] if todos_totales else "No detectado"
 
-        # 3. Extracción estructurada y limpia de la tabla por columnas reales
+        # 3. Extracción estructurada de la tabla por columnas reales
         tabla_match = re.search(r'REF\s+DESCRIPCIÓN.*?TOTAL ITEM\s*\n(.*?)(?=\nSubtotal)', texto_completo, re.DOTALL | re.IGNORECASE)
         
         filas_html = ""
@@ -113,13 +111,13 @@ async def procesar_factura(file: UploadFile = File(...)):
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script (incluyendo tipo de documento y etiqueta limpia)
+        # 5. Enviar a Google Apps Script
         url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
         
         datos = {
             "archivo_nombre": file.filename,
             "cotizacion_id": v_num_cotizacion,
-            "tipo_registro": "Nueva Cotización",  # Cambiar a "Corrección de Cotización" si lo requieres manualmente en el futuro
+            "tipo_registro": tipo_registro,
             "fecha": v_fecha,
             "cliente": v_cliente,
             "filas_tabla": filas_html,
