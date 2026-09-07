@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import requests
+import json
 import re
 import base64
 
@@ -129,9 +130,10 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
             "archivo_b64": archivo_b64
         }
         
-        requests.post(url_google, json=datos)
+        resp_google = requests.post(url_google, json=datos)
+        resultado_script = resp_google.json() if resp_google.text.startswith("{") else {"estado": "Completado", "mensaje": "Procesado correctamente"}
         
-        return {"estado": "Completado", "mensaje": "Procesado correctamente"}
+        return resultado_script
         
     except Exception as e:
         return {"estado": "Error", "mensaje": str(e)}
