@@ -7,10 +7,13 @@ import base64
 
 app = FastAPI()
 
+# Configuración CORS robusta para permitir peticiones desde Blogger o cualquier origen
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
-    allow_methods=["POST"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/procesar-factura/")
