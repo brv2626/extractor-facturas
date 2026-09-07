@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import requests
@@ -7,17 +7,14 @@ import base64
 
 app = FastAPI()
 
-# Configuración CORS robusta para permitir peticiones desde Blogger o cualquier origen
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], 
+    allow_methods=["POST"],
 )
 
 @app.post("/procesar-factura/")
-async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Form("Nueva Cotización")):
+async def procesar_factura(file: UploadFile = File(...)):
     try:
         # 1. Extraer texto completo del PDF
         texto_completo = ""
@@ -120,7 +117,7 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
         datos = {
             "archivo_nombre": file.filename,
             "cotizacion_id": v_num_cotizacion,
-            "tipo_registro": tipo_registro,
+            "tipo_registro": "Nueva Cotización",
             "fecha": v_fecha,
             "cliente": v_cliente,
             "filas_tabla": filas_html,
