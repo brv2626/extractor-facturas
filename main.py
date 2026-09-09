@@ -40,25 +40,26 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
             match_nombre = re.search(r'(Q\d+)', file.filename, re.IGNORECASE)
             v_num_cotizacion = match_nombre.group(1).upper() if match_nombre else "Cotización"
 
-        # --- NUEVA EXTRACCIÓN DINÁMICA DE CLIENTE Y NIT ---
-        match_cliente = re.search(r'DATOS DEL CLIENTE[\s\S]*?Razón Social\s+([^\n]+)', texto_completo, re.IGNORECASE)
-        if not match_cliente:
-            # Respaldo si el PDF se lee de forma horizontal
-            match_cliente = re.search(r'Razón Social.*?Razón Social\s+([^\n]+)', texto_completo, re.IGNORECASE)
-            
-        v_cliente_nombre = match_cliente.group(1).strip() if match_cliente else "Cliente No Detectado"
-        v_cliente_nombre = re.sub(r'\s+NIT.*$', '', v_cliente_nombre, flags=re.IGNORECASE).strip()
+        # --- EXTRACCIÓN EXACTA DE CLIENTE Y NIT (COLUMNA DERECHA) ---
+        v_cliente_nombre = "Cliente No Detectado"
+        todas_razones = re.findall(r'Razón Social\s+([^\n]+)', texto_completo, re.IGNORECASE)
+        if todas_razones:
+            ultimo_rs = todas_razones[-1]
+            partes = re.split(r'Razón Social', ultimo_rs, flags=re.IGNORECASE)
+            v_cliente_nombre = partes[-1].strip()
+            v_cliente_nombre = re.sub(r'\s+NIT.*$', '', v_cliente_nombre, flags=re.IGNORECASE).strip()
 
-        match_nit = re.search(r'DATOS DEL CLIENTE[\s\S]*?NIT\s+([0-9\-]+)', texto_completo, re.IGNORECASE)
-        if not match_nit:
-            # Respaldo si el PDF se lee de forma horizontal
-            match_nit = re.search(r'NIT.*?NIT\s+([0-9\-]+)', texto_completo, re.IGNORECASE)
-            
-        v_nit = match_nit.group(1).strip() if match_nit else "No Detectado"
+        v_nit = "No Detectado"
+        todos_nits = re.findall(r'NIT\s+([^\n]+)', texto_completo, re.IGNORECASE)
+        if todos_nits:
+            ultimo_nit_str = todos_nits[-1]
+            partes_nit = re.split(r'NIT', ultimo_nit_str, flags=re.IGNORECASE)
+            solo_num = re.search(r'([0-9\-]+)', partes_nit[-1])
+            if solo_num:
+                v_nit = solo_num.group(1).strip()
         
-        # Combinar ambos valores
         v_cliente = f"{v_cliente_nombre} (NIT: {v_nit})"
-        # --------------------------------------------------
+        # ------------------------------------------------------------
 
         v_subtotal = extraer_valor([r'\nSubtotal\s+(\$[\d\,\.]+)'], texto_completo)
         
