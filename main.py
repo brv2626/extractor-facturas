@@ -19,7 +19,6 @@ app.add_middleware(
 @app.post("/procesar-factura/")
 async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Form("Nueva Cotización")):
     try:
-        # 1. Extraer texto completo del PDF
         texto_completo = ""
         with pdfplumber.open(file.file) as pdf:
             for page in pdf.pages:
@@ -27,7 +26,6 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
-        # 2. Extracción de datos generales y número de cotización
         def extraer_valor(patrones, texto, por_defecto="No detectado"):
             for patron in patrones:
                 resultado = re.search(patron, texto, re.IGNORECASE)
@@ -49,12 +47,14 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
         v_cliente = re.sub(r'\s+', ' ', v_cliente).strip()
 
         v_subtotal = extraer_valor([r'\nSubtotal\s+(\$[\d\,\.]+)'], texto_completo)
-        v_iva = extraer_valor([r'IVA 19%\s+(\$[\d\,\.]+)', r'\nIVA\s+(\$[\d\,\.]+)'], texto_completo)
+        
+        # CORRECCIÓN: Buscar todos los valores de IVA y tomar exclusivamente el último de la lista
+        todos_ivas = re.findall(r'IVA\s*(?:19%)?\s+(\$[\d\,\.]+)', texto_completo, re.IGNORECASE)
+        v_iva = todos_ivas[-1] if todos_ivas else "$0.00"
         
         todos_totales = re.findall(r'\nTOTAL\s+(\$[\d\,\.]+)', texto_completo, re.IGNORECASE)
         v_total = todos_totales[-1] if todos_totales else "No detectado"
 
-        # 3. Extracción estructurada de la tabla por columnas reales
         tabla_match = re.search(r'REF\s+DESCRIPCIÓN.*?TOTAL ITEM\s*\n(.*?)(?=\nSubtotal)', texto_completo, re.DOTALL | re.IGNORECASE)
         
         filas_html = ""
@@ -109,12 +109,10 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
         else:
             filas_html = "<tr><td colspan='9' style='padding: 10px; text-align: center;'>No se pudieron procesar los ítems.</td></tr>"
 
-        # 4. Convertir PDF a Base64 para el adjunto
         file.file.seek(0)
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script (NUEVA URL DE OLATUR)
         url_google = "https://script.google.com/macros/s/AKfycbx2F6AsT4f6ZVxHiIyULRJ2D72F-gvIAcwI1UbvBkhrlmgwcc6y9t-rGn7NBBH-W-X1/exec"
         
         datos = {
