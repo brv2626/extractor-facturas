@@ -40,15 +40,28 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
             match_nombre = re.search(r'(Q\d+)', file.filename, re.IGNORECASE)
             v_num_cotizacion = match_nombre.group(1).upper() if match_nombre else "Cotización"
 
-        v_cliente = extraer_valor([
-            r'DATOS DEL CLIENTE.*?Razón Social\s+(.+?)(?=\s+NIT)',
-            r'Razón Social\s+(CONSTRUCTORA[^\n]+)'
-        ], texto_completo, "CONSTRUCTORA BOLIVAR BOGOTA")
-        v_cliente = re.sub(r'\s+', ' ', v_cliente).strip()
+        # --- NUEVA EXTRACCIÓN DINÁMICA DE CLIENTE Y NIT ---
+        match_cliente = re.search(r'DATOS DEL CLIENTE[\s\S]*?Razón Social\s+([^\n]+)', texto_completo, re.IGNORECASE)
+        if not match_cliente:
+            # Respaldo si el PDF se lee de forma horizontal
+            match_cliente = re.search(r'Razón Social.*?Razón Social\s+([^\n]+)', texto_completo, re.IGNORECASE)
+            
+        v_cliente_nombre = match_cliente.group(1).strip() if match_cliente else "Cliente No Detectado"
+        v_cliente_nombre = re.sub(r'\s+NIT.*$', '', v_cliente_nombre, flags=re.IGNORECASE).strip()
+
+        match_nit = re.search(r'DATOS DEL CLIENTE[\s\S]*?NIT\s+([0-9\-]+)', texto_completo, re.IGNORECASE)
+        if not match_nit:
+            # Respaldo si el PDF se lee de forma horizontal
+            match_nit = re.search(r'NIT.*?NIT\s+([0-9\-]+)', texto_completo, re.IGNORECASE)
+            
+        v_nit = match_nit.group(1).strip() if match_nit else "No Detectado"
+        
+        # Combinar ambos valores
+        v_cliente = f"{v_cliente_nombre} (NIT: {v_nit})"
+        # --------------------------------------------------
 
         v_subtotal = extraer_valor([r'\nSubtotal\s+(\$[\d\,\.]+)'], texto_completo)
         
-        # CORRECCIÓN: Buscar todos los valores de IVA y tomar exclusivamente el último de la lista
         todos_ivas = re.findall(r'IVA\s*(?:19%)?\s+(\$[\d\,\.]+)', texto_completo, re.IGNORECASE)
         v_iva = todos_ivas[-1] if todos_ivas else "$0.00"
         
