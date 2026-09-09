@@ -114,8 +114,8 @@ async def procesar_factura(file: UploadFile = File(...), tipo_registro: str = Fo
         pdf_bytes = file.file.read()
         archivo_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        # 5. Enviar a Google Apps Script
-        url_google = "https://script.google.com/macros/s/AKfycbyX1q3OxgC_ns_wc_Ml79jEqGaFav7mjT3Rv0s_5EzsAvCt0fcrBcHcNqPB21kGfhVOpA/exec"
+        # 5. Enviar a Google Apps Script (NUEVA URL DE OLATUR)
+        url_google = "https://script.google.com/macros/s/AKfycbx2F6AsT4f6ZVxHiIyULRJ2D72F-gvIAcwI1UbvBkhrlmgwcc6y9t-rGn7NBBH-W-X1/exec"
         
         datos = {
             "archivo_nombre": file.filename,
